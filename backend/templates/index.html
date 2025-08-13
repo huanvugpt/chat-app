@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en" x-data="chatApp()" x-init="init()">
+<head>
+    <meta charset="UTF-8">
+    <title>FastAPI Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs" defer></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element"></script>
+</head>
+<body class="bg-gray-100 flex flex-col items-center h-screen">
+    <div class="w-full max-w-3xl mt-10 bg-white shadow rounded p-4 flex flex-col h-[85vh]">
+        <!-- Login form -->
+        <div x-show="!loggedIn" class="flex flex-col space-y-2">
+            <input type="text" x-model.trim="username" placeholder="Your name" class="border rounded px-2 py-2">
+            <input type="password" x-model.trim="token" placeholder="Token" class="border rounded px-2 py-2">
+            <button :disabled="loggingIn"
+                    @click="login"
+                    class="bg-blue-600 disabled:opacity-60 text-white px-3 py-2 rounded">
+                <span x-show="!loggingIn">Join</span>
+                <span x-show="loggingIn">Checking...</span>
+            </button>
+        </div>
+
+        <!-- Chat UI -->
+        <div x-show="loggedIn" class="flex flex-col h-full">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="font-bold text-lg">Chat Room</h2>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-500">Hi, <span class="font-semibold" x-text="username"></span></span>
+                    <button @click="signOut" class="bg-red-500 text-white px-3 py-1 rounded">Sign out</button>
+                </div>
+            </div>
+
+            <div class="flex-1 border rounded p-2 overflow-y-auto" id="chat-box">
+                <template x-for="(msg, idx) in messages" :key="idx">
+                    <div class="mb-2 flex"
+                        :class="msg.user === username ? 'justify-end' : 'justify-start'">
+                        <div class="max-w-[70%] px-3 py-2 rounded-lg shadow"
+                            :class="msg.user === username 
+                                ? 'bg-green-500 text-white rounded-br-none' 
+                                : 'bg-gray-200 text-black rounded-bl-none'">
+                            <div class="text-xs opacity-70 mb-1" 
+                                x-text="`[${msg.time}] ${msg.user}`"></div>
+                            <div x-html="msg.text"></div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <div class="flex mt-2">
+                <input type="text" x-model="message" placeholder="Type a message..."
+                       class="flex-1 border rounded px-2 py-2"
+                       @keydown.enter.prevent="send">
+                <button @click="showEmoji = !showEmoji" class="ml-2 bg-yellow-400 px-3 py-2 rounded">😊</button>
+                <button @click="send" class="ml-2 bg-green-600 text-white px-3 py-2 rounded">Send</button>
+            </div>
+            <div x-show="showEmoji" class="mt-2">
+                <emoji-picker @emoji-click="addEmoji($event)"></emoji-picker>
+            </div>
+        </div>
+    </div>
+
+<script>
+function chatApp() {
+    return {
+        // state
+        ws: null,
+        username: '',
+        token: '',
+        message: '',
+        messages: [],
+        loggedIn: false,
+        loggingIn: false,
+        showEmoji: false,
+
+        // utils
+        _wsUrl() {
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            return `${proto}://${location.host}/ws?token=${encodeURIComponent(this.token)}`;
+        },
+        _isWsAlive() {
+            return this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING);
+        },
+
+        // auth
+        async login() {
+            if (!this.username || !this.token) {
+                alert("Enter username and token");
+                return;
+            }
+            if (this.loggedIn && this._isWsAlive()) return; // tránh double login
+            this.loggingIn = true;
+            try {
+                const res = await fetch('/check-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: this.token })
+                });
+                const data = await res.json();
+                if (data.valid) {
+                    this.loggedIn = true;
+                    localStorage.setItem('chatUser', JSON.stringify({
+                        username: this.username,
+                        token: this.token,
+                        expires: Date.now() + 86400000 // 1 ngày
+                    }));
+                    this.connect(); // chỉ connect 1 lần
+                } else {
+                    alert("Invalid token");
+                }
+            } catch (e) {
+                alert("Cannot reach server");
+            } finally {
+                this.loggingIn = false;
+            }
+        },
+
+        // ws
+        connect() {
+            if (this._isWsAlive()) return; // tránh mở 2 kết nối
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.close();
+            }
+
+            this.ws = new WebSocket(this._wsUrl());
+
+            this.ws.onopen = () => {
+                // no-op
+            };
+
+            this.ws.onmessage = (event) => {
+                // CHỈ push khi server gửi về -> tránh nhân đôi
+                const msg = JSON.parse(event.data);
+                this.messages.push(msg);
+                this.$nextTick(() => {
+                    const chatBox = document.getElementById('chat-box');
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                });
+            };
+
+            this.ws.onclose = () => {
+                this.ws = null;
+            };
+
+            this.ws.onerror = () => {
+                // giữ UI, có thể cho reconnect nếu cần
+            };
+        },
+
+        send() {
+            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+            const text = this.message.trim();
+            if (!text) return;
+            // KHÔNG push vào messages ở client — chờ server broadcast
+            this.ws.send(JSON.stringify({ user: this.username, text }));
+            this.message = '';
+        },
+
+        addEmoji(event) {
+            this.message += event.detail.unicode;
+            this.showEmoji = false;
+        },
+
+        signOut() {
+            localStorage.removeItem('chatUser');
+            this.loggedIn = false;
+            this.username = '';
+            this.token = '';
+            this.messages = [];
+            if (this.ws) {
+                try { this.ws.close(); } catch (_) {}
+                this.ws = null;
+            }
+        },
+
+        init() {
+            const saved = localStorage.getItem('chatUser');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    if (data.expires > Date.now()) {
+                        this.username = data.username;
+                        this.token = data.token;
+                        this.loggedIn = true;
+                        this.connect(); // auto connect 1 lần
+                    } else {
+                        localStorage.removeItem('chatUser');
+                    }
+                } catch (_) {
+                    localStorage.removeItem('chatUser');
+                }
+            }
+        }
+    }
+}
+</script>
+</body>
+</html>
