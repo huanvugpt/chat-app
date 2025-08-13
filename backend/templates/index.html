@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/alpinejs" defer></script>
-    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.18.0/picker.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col items-center h-screen">
     <div class="w-full max-w-3xl mt-10 bg-white shadow rounded p-4 flex flex-col h-[85vh]">
@@ -158,9 +158,10 @@ function chatApp() {
         },
 
         addEmoji(event) {
-            this.message += event.detail.unicode;
+            this.message += event.detail.emoji.unicode;
             this.showEmoji = false;
         },
+
 
         signOut() {
             localStorage.removeItem('chatUser');
