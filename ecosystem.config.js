@@ -3,13 +3,12 @@ module.exports = {
     {
       name: "fastapi-chat",
       script: "uvicorn",
-      args: "main:app --host 0.0.0.0 --port 8000 --reload",
+      args: "main:app --host 0.0.0.0 --port 8000",
       interpreter: "python3",
-      watch: false,
+      cwd: "/home/huanvm/chat-app",
       env: {
-        PYTHONUNBUFFERED: "1",
         PYTHONPATH: "."
       }
     }
   ]
-};
+}
