@@ -10,11 +10,10 @@ app = FastAPI()
 templates = Jinja2Templates(directory="backend/templates")
 
 # ===== Config =====
-TOKEN = "chucmungsinhnhat"   # đổi nếu cần
+TOKEN = "chucmungsinhnhat"
 DATA_DIR = "backend/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# WebSocket clients
 clients: Set[WebSocket] = set()
 
 def get_today_file():
@@ -70,13 +69,12 @@ async def get_chat_page(request: Request):
 async def websocket_endpoint(websocket: WebSocket):
     token = websocket.query_params.get("token")
     if token != TOKEN:
-        await websocket.close(code=4401)  # unauthorized
+        await websocket.close(code=4401)
         return
 
     await websocket.accept()
     clients.add(websocket)
 
-    # gửi lịch sử 15 phút gần nhất 1 lần khi connect
     for msg in load_recent_messages():
         try:
             await websocket.send_json(msg)
@@ -91,22 +89,22 @@ async def websocket_endpoint(websocket: WebSocket):
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "user": data.get("user", "unknown"),
                 "text": data.get("text", ""),
+                "image": data.get("image")  # có thể là None
             }
-            save_message(message)
 
-            # broadcast đúng 1 lần đến mọi client (kể cả người gửi)
+            # Nếu muốn ảnh KHÔNG lưu => chỉ lưu nếu không phải ảnh
+            if not message["image"]:
+                save_message(message)
+
             dead = []
             for client in clients:
                 try:
                     await client.send_json(message)
                 except Exception:
                     dead.append(client)
-            # cleanup clients lỗi
             for d in dead:
-                try:
-                    clients.remove(d)
-                except KeyError:
-                    pass
+                clients.remove(d)
+
     except WebSocketDisconnect:
         pass
     finally:

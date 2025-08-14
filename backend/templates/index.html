@@ -6,60 +6,81 @@
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/alpinejs" defer></script>
+    <!-- Emoji picker v1.x (ổn định) -->
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.18.0/picker.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col items-center h-screen">
-    <div class="w-full max-w-3xl mt-10 bg-white shadow rounded p-4 flex flex-col h-[85vh]">
-        <!-- Login form -->
-        <div x-show="!loggedIn" class="flex flex-col space-y-2">
-            <input type="text" x-model.trim="username" placeholder="Your name" class="border rounded px-2 py-2">
-            <input type="password" x-model.trim="token" placeholder="Token" class="border rounded px-2 py-2">
-            <button :disabled="loggingIn"
-                    @click="login"
-                    class="bg-blue-600 disabled:opacity-60 text-white px-3 py-2 rounded">
-                <span x-show="!loggingIn">Join</span>
-                <span x-show="loggingIn">Checking...</span>
-            </button>
+<div class="w-full max-w-3xl mt-10 bg-white shadow rounded p-4 flex flex-col h-[85vh]">
+
+    <!-- Login -->
+    <div x-show="!loggedIn" class="flex flex-col space-y-2">
+        <input type="text" x-model.trim="username" placeholder="Your name" class="border rounded px-2 py-2">
+        <input type="password" x-model.trim="token" placeholder="Token" class="border rounded px-2 py-2">
+        <button :disabled="loggingIn"
+                @click="login"
+                class="bg-blue-600 disabled:opacity-60 text-white px-3 py-2 rounded">
+            <span x-show="!loggingIn">Join</span>
+            <span x-show="loggingIn">Checking...</span>
+        </button>
+    </div>
+
+    <!-- Chat -->
+    <div x-show="loggedIn" class="flex flex-col h-full">
+        <div class="flex justify-between items-center mb-2">
+            <h2 class="font-bold text-lg">Chat Room</h2>
+            <div class="flex items-center gap-2">
+                <span class="text-sm text-gray-500">Hi, <span class="font-semibold" x-text="username"></span></span>
+                <button @click="signOut" class="bg-red-500 text-white px-3 py-1 rounded">Sign out</button>
+            </div>
         </div>
 
-        <!-- Chat UI -->
-        <div x-show="loggedIn" class="flex flex-col h-full">
-            <div class="flex justify-between items-center mb-2">
-                <h2 class="font-bold text-lg">Chat Room</h2>
-                <div class="flex items-center gap-2">
-                    <span class="text-sm text-gray-500">Hi, <span class="font-semibold" x-text="username"></span></span>
-                    <button @click="signOut" class="bg-red-500 text-white px-3 py-1 rounded">Sign out</button>
-                </div>
-            </div>
+        <div class="flex-1 border rounded p-2 overflow-y-auto" id="chat-box">
+            <template x-for="(msg, idx) in messages" :key="idx">
+                <div class="mb-2 flex" :class="msg.user === username ? 'justify-end' : 'justify-start'">
+                    <div class="max-w-[70%] px-3 py-2 rounded-lg shadow"
+                         :class="msg.user === username 
+                            ? 'bg-green-500 text-white rounded-br-none' 
+                            : 'bg-gray-200 text-black rounded-bl-none'">
+                        <div class="text-xs opacity-70 mb-1" x-text="`[${msg.time}] ${msg.user}`"></div>
 
-            <div class="flex-1 border rounded p-2 overflow-y-auto" id="chat-box">
-                <template x-for="(msg, idx) in messages" :key="idx">
-                    <div class="mb-2 flex"
-                        :class="msg.user === username ? 'justify-end' : 'justify-start'">
-                        <div class="max-w-[70%] px-3 py-2 rounded-lg shadow"
-                            :class="msg.user === username 
-                                ? 'bg-green-500 text-white rounded-br-none' 
-                                : 'bg-gray-200 text-black rounded-bl-none'">
-                            <div class="text-xs opacity-70 mb-1" 
-                                x-text="`[${msg.time}] ${msg.user}`"></div>
-                            <div x-html="msg.text"></div>
-                        </div>
+                        <!-- text -->
+                        <div x-show="msg.text" x-html="msg.text"></div>
+
+                        <!-- image -->
+                        <template x-if="msg.image">
+                            <a :href="msg.image" target="_blank" rel="noopener">
+                                <img :src="msg.image" class="max-w-xs mt-2 rounded shadow cursor-zoom-in" loading="lazy">
+                            </a>
+                        </template>
                     </div>
-                </template>
-            </div>
+                </div>
+            </template>
+        </div>
 
-            <div class="flex mt-2">
-                <input type="text" x-model="message" placeholder="Type a message..."
-                       class="flex-1 border rounded px-2 py-2"
-                       @keydown.enter.prevent="send">
-                <button @click="showEmoji = !showEmoji" class="ml-2 bg-yellow-400 px-3 py-2 rounded">😊</button>
-                <button @click="send" class="ml-2 bg-green-600 text-white px-3 py-2 rounded">Send</button>
-            </div>
-            <div x-show="showEmoji" class="mt-2">
-                <emoji-picker @emoji-click="addEmoji($event)"></emoji-picker>
-            </div>
+        <!-- Input row -->
+        <div class="flex mt-2 items-center">
+            <input type="text" x-model="message" placeholder="Type a message..."
+                   class="flex-1 border rounded px-2 py-2"
+                   @keydown.enter.prevent="send">
+
+            <!-- Emoji -->
+            <button @click="showEmoji = !showEmoji" class="ml-2 bg-yellow-400 px-3 py-2 rounded">😊</button>
+
+            <!-- Hidden file input (CHỈ MỘT CÁI) -->
+            <input type="file" x-ref="imageInput" class="hidden" accept="image/*" @change="sendImage">
+
+            <!-- Camera button click vào x-ref -->
+            <button @click="$refs.imageInput.click()" class="ml-2 bg-blue-500 text-white px-3 py-2 rounded">📷</button>
+
+            <!-- Send -->
+            <button @click="send" class="ml-2 bg-green-600 text-white px-3 py-2 rounded">Send</button>
+        </div>
+
+        <div x-show="showEmoji" class="mt-2">
+            <emoji-picker @emoji-click="addEmoji($event)"></emoji-picker>
         </div>
     </div>
+</div>
 
 <script>
 function chatApp() {
@@ -86,7 +107,6 @@ function chatApp() {
                 alert("Enter username and token");
                 return;
             }
-            if (this.loggedIn && this._isWsAlive()) return;
             this.loggingIn = true;
             try {
                 const res = await fetch('/check-token', {
@@ -102,15 +122,11 @@ function chatApp() {
                         token: this.token,
                         expires: Date.now() + 86400000
                     }));
-                    // Xin quyền notification
-                    if ("Notification" in window && Notification.permission !== "granted") {
-                        Notification.requestPermission();
-                    }
                     this.connect();
                 } else {
                     alert("Invalid token");
                 }
-            } catch (e) {
+            } catch {
                 alert("Cannot reach server");
             } finally {
                 this.loggingIn = false;
@@ -119,28 +135,15 @@ function chatApp() {
 
         connect() {
             if (this._isWsAlive()) return;
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.close();
-            }
-
             this.ws = new WebSocket(this._wsUrl());
 
             this.ws.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
                 this.messages.push(msg);
-
                 this.$nextTick(() => {
                     const chatBox = document.getElementById('chat-box');
                     chatBox.scrollTop = chatBox.scrollHeight;
                 });
-
-                // Thông báo nếu tab không focus
-                if (!document.hasFocus()) {
-                    document.title = "💬 Tin nhắn mới!";
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification(`${msg.user}`, { body: msg.text });
-                    }
-                }
             };
 
             this.ws.onclose = () => { this.ws = null; };
@@ -155,7 +158,27 @@ function chatApp() {
             this.message = '';
         },
 
+        sendImage(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Đọc base64 và gửi qua WS
+            const reader = new FileReader();
+            reader.onload = () => {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        user: this.username,
+                        image: reader.result
+                    }));
+                }
+                // Reset input để lần sau chọn cùng file vẫn trigger change
+                this.$refs.imageInput.value = '';
+            };
+            reader.readAsDataURL(file);
+        },
+
         addEmoji(event) {
+            // emoji-picker v1.x
             this.message += event.detail.emoji.unicode;
             this.showEmoji = false;
         },
@@ -181,22 +204,14 @@ function chatApp() {
                         this.username = data.username;
                         this.token = data.token;
                         this.loggedIn = true;
-                        if ("Notification" in window && Notification.permission !== "granted") {
-                            Notification.requestPermission();
-                        }
                         this.connect();
                     } else {
                         localStorage.removeItem('chatUser');
                     }
-                } catch (_) {
+                } catch {
                     localStorage.removeItem('chatUser');
                 }
             }
-
-            // Reset tiêu đề khi quay lại tab
-            window.addEventListener('focus', () => {
-                document.title = "FastAPI Chat";
-            });
         }
     }
 }
