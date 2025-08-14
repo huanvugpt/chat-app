@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 import json
 import os
 import glob
-from typing import Set
+import uuid
+from typing import Set, Dict
 
 app = FastAPI()
 templates = Jinja2Templates(directory="backend/templates")
@@ -17,14 +18,15 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 clients: Set[WebSocket] = set()
 
+# Lưu trạng thái like trong RAM: msg_id -> set(usernames)
+like_state: Dict[str, set] = {}
+
 
 def get_today_file():
-    """Trả về đường dẫn file json của ngày hôm nay"""
     return os.path.join(DATA_DIR, f"{datetime.now().strftime('%Y-%m-%d')}.json")
 
 
 def save_message(message):
-    """Lưu tin nhắn text vào file ngày hôm nay"""
     file_path = get_today_file()
     if not os.path.exists(file_path):
         with open(file_path, "w", encoding="utf-8") as f:
@@ -43,7 +45,7 @@ def save_message(message):
 
 
 def load_recent_messages(minutes=15):
-    """Tải tin nhắn gần đây (trong X phút) của hôm nay"""
+    """Tải tin nhắn gần đây (hôm nay) trong X phút; nếu thiếu id/likes thì bổ sung để client xử lý like."""
     file_path = get_today_file()
     if not os.path.exists(file_path):
         return []
@@ -61,12 +63,19 @@ def load_recent_messages(minutes=15):
         except Exception:
             continue
         if dt > cutoff:
+            # đảm bảo có id + likes
+            if "id" not in msg:
+                msg["id"] = uuid.uuid4().hex
+            if "likes" not in msg or not isinstance(msg["likes"], list):
+                msg["likes"] = []
+            # init trạng thái like trong RAM nếu chưa có
+            like_state.setdefault(msg["id"], set(msg["likes"]))
             res.append(msg)
     return res
 
 
-def cleanup_old_files(days=7):
-    """Xóa file cũ hơn X ngày"""
+def cleanup_old_files(days=1):
+    """Xóa file cũ hơn X ngày (days=1 => chỉ giữ hôm nay)."""
     cutoff = datetime.now() - timedelta(days=days)
     for file in glob.glob(os.path.join(DATA_DIR, "*.json")):
         try:
@@ -98,7 +107,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     clients.add(websocket)
 
-    # Gửi tin nhắn gần đây cho client mới
+    # Gửi lịch sử gần đây cho client mới
     for msg in load_recent_messages():
         try:
             await websocket.send_json(msg)
@@ -108,20 +117,55 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_json()
+
+            # ===== Sự kiện LIKE (toggle) =====
+            if data.get("type") == "like":
+                msg_id = data.get("msg_id")
+                user = data.get("user", "unknown")
+                if not msg_id:
+                    continue
+                bucket = like_state.setdefault(msg_id, set())
+                if user in bucket:
+                    bucket.remove(user)
+                else:
+                    bucket.add(user)
+
+                payload = {
+                    "type": "like",
+                    "msg_id": msg_id,
+                    "likes": sorted(list(bucket))
+                }
+                # broadcast cập nhật like
+                dead = []
+                for client in clients:
+                    try:
+                        await client.send_json(payload)
+                    except Exception:
+                        dead.append(client)
+                for d in dead:
+                    clients.discard(d)
+                continue
+
+            # ===== Tin nhắn thường (text / image) =====
             message = {
+                "id": uuid.uuid4().hex,
                 "time": datetime.now().strftime("%H:%M:%S"),
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "user": data.get("user", "unknown"),
                 "text": data.get("text", ""),
-                "image": data.get("image")  # có thể là None
+                "image": data.get("image"),  # base64 data URL hoặc None
+                "likes": []
             }
 
-            # Tin nhắn ảnh thì không lưu
+            # init like bucket
+            like_state[message["id"]] = set()
+
+            # Text: lưu file; Ảnh: không lưu
             if not message["image"]:
                 save_message(message)
                 cleanup_old_files(days=1)
 
-            # Gửi tin nhắn cho tất cả client
+            # broadcast tới tất cả client
             dead = []
             for client in clients:
                 try:
@@ -129,10 +173,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 except Exception:
                     dead.append(client)
             for d in dead:
-                clients.remove(d)
+                clients.discard(d)
 
     except WebSocketDisconnect:
         pass
     finally:
-        if websocket in clients:
-            clients.remove(websocket)
+        clients.discard(websocket)
