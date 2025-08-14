@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from datetime import datetime, timedelta
 import json
 import os
+import glob
 from typing import Set
 
 app = FastAPI()
@@ -16,10 +17,14 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 clients: Set[WebSocket] = set()
 
+
 def get_today_file():
+    """Trả về đường dẫn file json của ngày hôm nay"""
     return os.path.join(DATA_DIR, f"{datetime.now().strftime('%Y-%m-%d')}.json")
 
+
 def save_message(message):
+    """Lưu tin nhắn text vào file ngày hôm nay"""
     file_path = get_today_file()
     if not os.path.exists(file_path):
         with open(file_path, "w", encoding="utf-8") as f:
@@ -36,7 +41,9 @@ def save_message(message):
         f.truncate(0)
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+
 def load_recent_messages(minutes=15):
+    """Tải tin nhắn gần đây (trong X phút) của hôm nay"""
     file_path = get_today_file()
     if not os.path.exists(file_path):
         return []
@@ -57,13 +64,29 @@ def load_recent_messages(minutes=15):
             res.append(msg)
     return res
 
+
+def cleanup_old_files(days=7):
+    """Xóa file cũ hơn X ngày"""
+    cutoff = datetime.now() - timedelta(days=days)
+    for file in glob.glob(os.path.join(DATA_DIR, "*.json")):
+        try:
+            file_date = datetime.strptime(os.path.basename(file).replace(".json", ""), "%Y-%m-%d")
+            if file_date < cutoff:
+                os.remove(file)
+                print(f"[CLEANUP] Deleted old file: {file}")
+        except ValueError:
+            pass
+
+
 @app.post("/check-token")
 async def check_token(payload: dict):
     return {"valid": payload.get("token") == TOKEN}
 
+
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -75,6 +98,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     clients.add(websocket)
 
+    # Gửi tin nhắn gần đây cho client mới
     for msg in load_recent_messages():
         try:
             await websocket.send_json(msg)
@@ -92,10 +116,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 "image": data.get("image")  # có thể là None
             }
 
-            # Nếu muốn ảnh KHÔNG lưu => chỉ lưu nếu không phải ảnh
+            # Tin nhắn ảnh thì không lưu
             if not message["image"]:
                 save_message(message)
+                cleanup_old_files(days=1)
 
+            # Gửi tin nhắn cho tất cả client
             dead = []
             for client in clients:
                 try:
