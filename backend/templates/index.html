@@ -64,7 +64,6 @@
 <script>
 function chatApp() {
     return {
-        // state
         ws: null,
         username: '',
         token: '',
@@ -74,7 +73,6 @@ function chatApp() {
         loggingIn: false,
         showEmoji: false,
 
-        // utils
         _wsUrl() {
             const proto = location.protocol === 'https:' ? 'wss' : 'ws';
             return `${proto}://${location.host}/ws?token=${encodeURIComponent(this.token)}`;
@@ -83,13 +81,12 @@ function chatApp() {
             return this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING);
         },
 
-        // auth
         async login() {
             if (!this.username || !this.token) {
                 alert("Enter username and token");
                 return;
             }
-            if (this.loggedIn && this._isWsAlive()) return; // tránh double login
+            if (this.loggedIn && this._isWsAlive()) return;
             this.loggingIn = true;
             try {
                 const res = await fetch('/check-token', {
@@ -103,9 +100,13 @@ function chatApp() {
                     localStorage.setItem('chatUser', JSON.stringify({
                         username: this.username,
                         token: this.token,
-                        expires: Date.now() + 86400000 // 1 ngày
+                        expires: Date.now() + 86400000
                     }));
-                    this.connect(); // chỉ connect 1 lần
+                    // Xin quyền notification
+                    if ("Notification" in window && Notification.permission !== "granted") {
+                        Notification.requestPermission();
+                    }
+                    this.connect();
                 } else {
                     alert("Invalid token");
                 }
@@ -116,43 +117,40 @@ function chatApp() {
             }
         },
 
-        // ws
         connect() {
-            if (this._isWsAlive()) return; // tránh mở 2 kết nối
+            if (this._isWsAlive()) return;
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                 this.ws.close();
             }
 
             this.ws = new WebSocket(this._wsUrl());
 
-            this.ws.onopen = () => {
-                // no-op
-            };
-
             this.ws.onmessage = (event) => {
-                // CHỈ push khi server gửi về -> tránh nhân đôi
                 const msg = JSON.parse(event.data);
                 this.messages.push(msg);
+
                 this.$nextTick(() => {
                     const chatBox = document.getElementById('chat-box');
                     chatBox.scrollTop = chatBox.scrollHeight;
                 });
+
+                // Thông báo nếu tab không focus
+                if (!document.hasFocus()) {
+                    document.title = "💬 Tin nhắn mới!";
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification(`${msg.user}`, { body: msg.text });
+                    }
+                }
             };
 
-            this.ws.onclose = () => {
-                this.ws = null;
-            };
-
-            this.ws.onerror = () => {
-                // giữ UI, có thể cho reconnect nếu cần
-            };
+            this.ws.onclose = () => { this.ws = null; };
+            this.ws.onerror = () => {};
         },
 
         send() {
             if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
             const text = this.message.trim();
             if (!text) return;
-            // KHÔNG push vào messages ở client — chờ server broadcast
             this.ws.send(JSON.stringify({ user: this.username, text }));
             this.message = '';
         },
@@ -161,7 +159,6 @@ function chatApp() {
             this.message += event.detail.emoji.unicode;
             this.showEmoji = false;
         },
-
 
         signOut() {
             localStorage.removeItem('chatUser');
@@ -184,7 +181,10 @@ function chatApp() {
                         this.username = data.username;
                         this.token = data.token;
                         this.loggedIn = true;
-                        this.connect(); // auto connect 1 lần
+                        if ("Notification" in window && Notification.permission !== "granted") {
+                            Notification.requestPermission();
+                        }
+                        this.connect();
                     } else {
                         localStorage.removeItem('chatUser');
                     }
@@ -192,6 +192,11 @@ function chatApp() {
                     localStorage.removeItem('chatUser');
                 }
             }
+
+            // Reset tiêu đề khi quay lại tab
+            window.addEventListener('focus', () => {
+                document.title = "FastAPI Chat";
+            });
         }
     }
 }
