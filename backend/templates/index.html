@@ -1,297 +1,365 @@
 <!DOCTYPE html>
-<html lang="en" x-data="chatApp()" x-init="init()">
+<html lang="vi" x-data="chatApp()" x-init="init()">
 <head>
-    <meta charset="UTF-8">
-    <title>FastAPI Chat</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/alpinejs" defer></script>
-    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.18.0/picker.js"></script>
-    <style>
-        .btn-ghost { opacity:.8; }
-        .btn-ghost:hover { opacity:1; }
-        .heart-liked { filter: drop-shadow(0 0 2px rgba(255,0,0,.6)); }
-        .quote-block {
-            border-left: 3px solid #ccc;
-            background: rgba(0,0,0,0.03);
-            padding: 4px 8px;
-            margin-bottom: 4px;
-            border-radius: 4px;
-        }
-        .quote-user {
-            font-weight: 600;
-            font-size: 0.75rem;
-            color: #666;
-        }
-        .quote-text {
-            font-size: 0.85rem;
-            color: #444;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>FastAPI Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs" defer></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.18.0/picker.js"></script>
+  <style>
+    .btn-ghost { opacity:.8; }
+    .btn-ghost:hover { opacity:1; }
+    .heart-liked { filter: drop-shadow(0 0 2px rgba(255,0,0,.6)); }
+    .quote-block {
+      border-left: 3px solid #ccc;
+      background: rgba(0,0,0,0.03);
+      padding: 4px 8px;
+      margin-bottom: 4px;
+      border-radius: 4px;
+    }
+    .quote-user {
+      font-weight: 600;
+      font-size: 0.75rem;
+      color: #666;
+    }
+    .quote-text {
+      font-size: 0.85rem;
+      color: #444;
+    }
+  </style>
 </head>
-<body class="bg-gray-100 flex flex-col items-center h-screen">
-<div class="w-full max-w-3xl mt-10 bg-white shadow rounded p-4 flex flex-col h-[85vh]">
+<body class="bg-gray-100 min-h-screen">
+<div class="w-full max-w-3xl mx-auto py-8 px-4">
 
-    <!-- Login -->
-    <div x-show="!loggedIn" class="flex flex-col space-y-2">
-        <input type="text" x-model.trim="username" placeholder="Your name" class="border rounded px-2 py-2">
-        <input type="password" x-model.trim="token" placeholder="Token" class="border rounded px-2 py-2">
-        <button :disabled="loggingIn"
-                @click="login"
-                class="bg-blue-600 disabled:opacity-60 text-white px-3 py-2 rounded">
-            <span x-show="!loggingIn">Join</span>
-            <span x-show="loggingIn">Checking...</span>
-        </button>
+  <!-- Login -->
+  <div x-show="!loggedIn" class="flex flex-col items-center justify-center min-h-[70vh]">
+    <div class="bg-white rounded-2xl shadow-lg p-6 w-full max-w-sm">
+      <h2 class="text-2xl font-bold text-center mb-4 text-gray-800">🔑 Hello!</h2>
+
+      <label class="text-sm text-gray-600 mb-1 block">Username</label>
+      <input type="text" x-model.trim="loginUsername" placeholder="Your name"
+             class="w-full border rounded px-3 py-2 mb-3 focus:outline-none focus:ring focus:ring-blue-300">
+
+      <label class="text-sm text-gray-600 mb-1 block">Password</label>
+      <input type="password" x-model.trim="loginPassword" placeholder="Password"
+             class="w-full border rounded px-3 py-2 mb-4 focus:outline-none focus:ring focus:ring-blue-300">
+
+      <button :disabled="loggingIn"
+              @click="login"
+              class="w-full bg-blue-600 disabled:opacity-60 text-white px-3 py-2 rounded hover:bg-blue-700 transition">
+        <span x-show="!loggingIn">Sign in</span>
+        <span x-show="loggingIn">Checking...</span>
+      </button>
+
+      <p class="text-red-500 text-sm mt-3 text-center" x-text="loginError"></p>
+    </div>
+  </div>
+
+  <!-- Chat -->
+  <div x-show="loggedIn" class="bg-white shadow rounded p-4 flex flex-col h-[80vh]">
+    <div class="flex justify-between items-center mb-2">
+      <div class="flex items-center gap-2">
+        <input type="text"
+               x-model="displayName"
+               placeholder="Nhập tên hiển thị..."
+               class="border px-2 py-1 rounded text-sm w-44" />
+        <button @click="saveDisplayName"
+                class="bg-blue-500 text-white px-3 py-1 rounded text-sm">Lưu</button>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-500">Hi, <span class="font-semibold" x-text="username"></span></span>
+        <button @click="signOut" class="bg-red-500 text-white px-3 py-1 rounded">Sign out</button>
+      </div>
     </div>
 
-    <!-- Chat -->
-    <div x-show="loggedIn" class="flex flex-col h-full">
-        <div class="flex justify-between items-center mb-2">
-            <h2 class="font-bold text-lg">Chat Room</h2>
-            <div class="flex items-center gap-2">
-                <span class="text-sm text-gray-500">Hi, <span class="font-semibold" x-text="username"></span></span>
-                <button @click="signOut" class="bg-red-500 text-white px-3 py-1 rounded">Sign out</button>
-            </div>
-        </div>
+    <div class="flex-1 border rounded p-2 overflow-y-auto" id="chat-box" x-ref="chatBox">
+      <template x-for="(msg, idx) in messages" :key="msg.id || idx">
+        <div class="mb-4 flex"
+             :class="(msg.realUser || msg.user) === username ? 'justify-end' : 'justify-start'">
+          <div class="relative group max-w-[70%] px-3 py-2 rounded-lg shadow"
+               :class="(msg.realUser || msg.user) === username
+                  ? 'bg-green-500 text-white rounded-br-none'
+                  : 'bg-gray-200 text-black rounded-bl-none'">
 
-        <div class="flex-1 border rounded p-2 overflow-y-auto" id="chat-box">
-            <template x-for="(msg, idx) in messages" :key="msg.id || idx">
-                <div class="mb-4 flex" :class="msg.user === username ? 'justify-end' : 'justify-start'">
-                    <div class="max-w-[70%] px-3 py-2 rounded-lg shadow relative group"
-                         :class="msg.user === username
-                            ? 'bg-green-500 text-white rounded-br-none'
-                            : 'bg-gray-200 text-black rounded-bl-none'">
+            <div class="text-xs opacity-70 mb-1" x-text="`[${msg.time}] ${msg.user}`"></div>
 
-                        <div class="text-xs opacity-70 mb-1" x-text="`[${msg.time}] ${msg.user}`"></div>
-
-                        <!-- Quote -->
-                        <template x-if="/^>\s?.+?:/.test(msg.text)">
-                            <div>
-                                <div class="quote-block">
-                                    <div class="quote-user" x-text="msg.text.match(/^>\s?(.+?):/)[1]"></div>
-                                    <div class="quote-text" x-text="msg.text.replace(/^>\s?.+?:\s?/, '')"></div>
-                                </div>
-                            </div>
-                        </template>
-
-                        <!-- Normal text -->
-                        <template x-if="!/^>\s?.+?:/.test(msg.text)">
-                            <div x-html="msg.text"></div>
-                        </template>
-
-                        <!-- image -->
-                        <template x-if="msg.image">
-                            <a :href="msg.image" target="_blank" rel="noopener">
-                                <img :src="msg.image" class="max-w-xs mt-2 rounded shadow cursor-zoom-in" loading="lazy">
-                            </a>
-                        </template>
-
-                        <!-- actions -->
-                        <div class="msg-actions absolute flex gap-3 text-xs items-center transition-opacity duration-200"
-                             :class="(msg.likes?.includes(username)) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'">
-                            <button class="btn-ghost"
-                                    @click="likeMessage(msg)"
-                                    :title="(msg.likes?.includes(username) ? 'Unlike' : 'Like')">
-                                <span :class="msg.likes?.includes(username) ? 'heart-liked' : ''">❤️</span>
-                                <span class="ml-1" x-text="msg.likes ? msg.likes.length : 0"></span>
-                            </button>
-                            <button class="btn-ghost" @click="quoteMessage(msg)" title="Quote">💬</button>
-                        </div>
-                    </div>
+            <!-- Quote view: > User: content -->
+            <template x-if="/^>\s?.+?:/.test(msg.text || '')">
+              <div class="mb-1">
+                <div class="quote-block">
+                  <div class="quote-user" x-text="(msg.text.match(/^>\s?(.+?):/) || [,''])[1]"></div>
+                  <div class="quote-text" x-text="(msg.text || '').replace(/^>\s?.+?:\s?/, '')"></div>
                 </div>
+              </div>
             </template>
+
+            <!-- Normal text -->
+            <template x-if="!/^>\s?.+?:/.test(msg.text || '')">
+              <div x-html="msg.text"></div>
+            </template>
+
+            <!-- image -->
+            <template x-if="msg.image">
+              <a :href="msg.image" target="_blank" rel="noopener">
+                <img :src="msg.image" class="max-w-xs mt-2 rounded shadow cursor-zoom-in" loading="lazy">
+              </a>
+            </template>
+
+            <!-- actions (ẩn, chỉ hiện khi hover hoặc đã like) -->
+            <div class="absolute -bottom-5 left-2 right-2 flex gap-3 text-xs items-center transition-opacity duration-200"
+                 :class="(msg.likes?.includes(username)) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'">
+              <button class="btn-ghost"
+                      @click="likeMessage(msg)"
+                      :title="(msg.likes?.includes(username) ? 'Unlike' : 'Like')">
+                <span :class="msg.likes?.includes(username) ? 'heart-liked' : ''">❤️</span>
+                <span class="ml-1" x-text="msg.likes ? msg.likes.length : 0"></span>
+              </button>
+              <button class="btn-ghost" @click="quoteMessage(msg)" title="Quote">💬</button>
+            </div>
+          </div>
         </div>
-
-        <!-- Composer -->
-        <div class="flex mt-2 items-center">
-            <input type="text" x-model="message" placeholder="Type a message..."
-                   class="flex-1 border rounded px-2 py-2"
-                   @keydown.enter.prevent="send">
-
-            <!-- Emoji -->
-            <button @click="showEmoji = !showEmoji" class="ml-2 bg-yellow-400 px-3 py-2 rounded">😊</button>
-
-            <!-- Hidden file input -->
-            <input type="file" x-ref="imageInput" class="hidden" accept="image/*" @change="sendImage">
-            <button @click="$refs.imageInput.click()" class="ml-2 bg-blue-500 text-white px-3 py-2 rounded">📷</button>
-
-            <!-- Send -->
-            <button @click="send" class="ml-2 bg-green-600 text-white px-3 py-2 rounded">Send</button>
-        </div>
-
-        <div x-show="showEmoji" class="mt-2">
-            <emoji-picker @emoji-click="addEmoji($event)"></emoji-picker>
-        </div>
+      </template>
     </div>
+
+    <!-- Composer -->
+    <div class="flex mt-2 items-center">
+      <input type="text" x-model="message" placeholder="Type a message..."
+             class="flex-1 border rounded px-2 py-2"
+             @keydown.enter.prevent="send">
+
+      <!-- Emoji -->
+      <button @click="showEmoji = !showEmoji" class="ml-2 bg-yellow-400 px-3 py-2 rounded">😊</button>
+
+      <!-- Hidden file input -->
+      <input type="file" x-ref="imageInput" class="hidden" accept="image/*" @change="sendImage">
+      <button @click="$refs.imageInput.click()" class="ml-2 bg-blue-500 text-white px-3 py-2 rounded">📷</button>
+
+      <!-- Send -->
+      <button @click="send" class="ml-2 bg-green-600 text-white px-3 py-2 rounded">Send</button>
+    </div>
+
+    <div x-show="showEmoji" class="mt-2">
+      <emoji-picker @emoji-click="addEmoji($event)"></emoji-picker>
+    </div>
+  </div>
 </div>
 
 <script>
 function chatApp() {
-    return {
-        ws: null,
-        username: '',
-        token: '',
-        message: '',
-        messages: [],
-        loggedIn: false,
-        loggingIn: false,
-        showEmoji: false,
+  return {
+    // auth state
+    username: '',
+    token: '',
+    tokenExpires: 0,
+    loggedIn: false,
+    loggingIn: false,
+    loginUsername: '',
+    loginPassword: '',
+    loginError: '',
 
-        _wsUrl() {
-            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-            return `${proto}://${location.host}/ws?token=${encodeURIComponent(this.token)}`;
-        },
-        _isWsAlive() {
-            return this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING);
-        },
+    // chat state
+    ws: null,
+    message: '',
+    messages: [],
+    showEmoji: false,
+    displayName: '',
 
-        async login() {
-            if (!this.username || !this.token) {
-                alert("Enter username and token");
-                return;
+    // utils
+    _wsUrl() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const qp = new URLSearchParams({ token: this.token });
+      return `${proto}://${location.host}/ws?${qp.toString()}`;
+    },
+    _isWsAlive() {
+      return this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING);
+    },
+
+    // init
+    async init() {
+      // cố gắng auto login bằng token
+      const savedToken = localStorage.getItem('authToken');
+      if (savedToken) {
+        try {
+          const res = await fetch('/check-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: savedToken })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            this.token = savedToken;
+            this.username = data.user;
+            this.tokenExpires = data.expires;
+            this.loggedIn = true;
+            this.displayName = localStorage.getItem(`displayName::${this.username}`) || this.username;
+            if ("Notification" in window && Notification.permission !== "granted") {
+              Notification.requestPermission();
             }
-            if (this.loggedIn && this._isWsAlive()) return;
-            this.loggingIn = true;
-            try {
-                const res = await fetch('/check-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: this.token })
-                });
-                const data = await res.json();
-                if (data.valid) {
-                    this.loggedIn = true;
-                    localStorage.setItem('chatUser', JSON.stringify({
-                        username: this.username,
-                        token: this.token,
-                        expires: Date.now() + 86400000
-                    }));
-                    if ("Notification" in window && Notification.permission !== "granted") {
-                        Notification.requestPermission();
-                    }
-                    this.connect();
-                } else {
-                    alert("Invalid token");
-                }
-            } catch {
-                alert("Cannot reach server");
-            } finally {
-                this.loggingIn = false;
-            }
-        },
-
-        connect() {
-            if (this._isWsAlive()) return;
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.close();
-
-            this.ws = new WebSocket(this._wsUrl());
-
-            this.ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-
-                if (msg.type === 'like') {
-                    const target = this.messages.find(m => m.id === msg.msg_id);
-                    if (target) target.likes = msg.likes || [];
-                    return;
-                }
-
-                if (!msg.likes) msg.likes = [];
-                this.messages.push(msg);
-
-                this.$nextTick(() => {
-                    const chatBox = document.getElementById('chat-box');
-                    chatBox.scrollTop = chatBox.scrollHeight;
-                });
-
-                if (!document.hasFocus()) {
-                    document.title = "💬 Tin nhắn mới!";
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        const body = msg.text ? msg.text : (msg.image ? "[Image]" : "");
-                        new Notification(`${msg.user}`, { body });
-                    }
-                }
-            };
-
-            this.ws.onclose = () => { this.ws = null; };
-            this.ws.onerror = () => {};
-        },
-
-        send() {
-            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-            const text = this.message.trim();
-            if (!text) return;
-            this.ws.send(JSON.stringify({ user: this.username, text }));
-            this.message = '';
-        },
-
-        sendImage(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.send(JSON.stringify({
-                        user: this.username,
-                        image: reader.result
-                    }));
-                }
-                this.$refs.imageInput.value = '';
-            };
-            reader.readAsDataURL(file);
-        },
-
-        addEmoji(event) {
-            this.message += event.detail.emoji.unicode;
-            this.showEmoji = false;
-        },
-
-        likeMessage(msg) {
-            if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !msg.id) return;
-            this.ws.send(JSON.stringify({
-                type: "like",
-                msg_id: msg.id,
-                user: this.username
-            }));
-        },
-
-        quoteMessage(msg) {
-            const content = msg.text ? msg.text : '[Image]';
-            const quoted = `> ${msg.user}: ${content}`;
-            this.message = quoted + "\n" + this.message;
-        },
-
-        signOut() {
-            localStorage.removeItem('chatUser');
-            this.loggedIn = false;
-            this.username = '';
-            this.token = '';
-            this.messages = [];
-            if (this.ws) { try { this.ws.close(); } catch(_) {} this.ws = null; }
-        },
-
-        init() {
-            const saved = localStorage.getItem('chatUser');
-            if (saved) {
-                try {
-                    const data = JSON.parse(saved);
-                    if (data.expires > Date.now()) {
-                        this.username = data.username;
-                        this.token = data.token;
-                        this.loggedIn = true;
-                        if ("Notification" in window && Notification.permission !== "granted") {
-                            Notification.requestPermission();
-                        }
-                        this.connect();
-                    } else {
-                        localStorage.removeItem('chatUser');
-                    }
-                } catch {
-                    localStorage.removeItem('chatUser');
-                }
-            }
-            window.addEventListener('focus', () => { document.title = "FastAPI Chat"; });
+            this.connect();
+          } else {
+            localStorage.removeItem('authToken');
+          }
+        } catch (_) {
+          // ignore
         }
+      }
+      window.addEventListener('focus', () => { document.title = "FastAPI Chat"; });
+    },
+
+    // login
+    async login() {
+      if (!this.loginUsername || !this.loginPassword) {
+        this.loginError = "Nhập username và password";
+        return;
+      }
+      if (this.loggedIn && this._isWsAlive()) return;
+
+      this.loggingIn = true;
+      this.loginError = '';
+      try {
+        const res = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: this.loginUsername, password: this.loginPassword })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          this.username = data.user;
+          this.token = data.token;
+          this.tokenExpires = data.expires;
+          this.loggedIn = true;
+          localStorage.setItem('authToken', data.token);
+          // displayName riêng theo user
+          this.displayName = localStorage.getItem(`displayName::${this.username}`) || this.username;
+
+          if ("Notification" in window && Notification.permission !== "granted") {
+            Notification.requestPermission();
+          }
+          this.connect();
+        } else {
+          this.loginError = data.error || "Đăng nhập thất bại";
+        }
+      } catch (e) {
+        this.loginError = "Không kết nối được server";
+      } finally {
+        this.loggingIn = false;
+      }
+    },
+
+    // ws
+    connect() {
+      if (this._isWsAlive()) return;
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.close();
+
+      this.ws = new WebSocket(this._wsUrl());
+
+      this.ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        // cập nhật like realtime
+        if (msg.type === 'like') {
+          const target = this.messages.find(m => m.id === msg.msg_id);
+          if (target) target.likes = msg.likes || [];
+          return;
+        }
+
+        if (!msg.likes) msg.likes = [];
+        if (!msg.realUser) msg.realUser = msg.user; // fallback cho message cũ
+        this.messages.push(msg);
+
+        this.$nextTick(() => {
+          const chatBox = this.$refs.chatBox;
+          chatBox.scrollTop = chatBox.scrollHeight;
+        });
+
+        // notify khi tab không focus
+        if (!document.hasFocus()) {
+          document.title = "💬 Tin nhắn mới!";
+          if ("Notification" in window && Notification.permission === "granted") {
+            const body = msg.text ? (msg.text.length > 80 ? msg.text.slice(0, 80) + "…" : msg.text)
+                                  : (msg.image ? "[Image]" : "");
+            new Notification(`${msg.user}`, { body });
+          }
+        }
+      };
+
+      this.ws.onclose = () => { this.ws = null; };
+      this.ws.onerror = () => {};
+    },
+
+    // display name
+    saveDisplayName() {
+      this.displayName = (this.displayName || '').trim() || this.username;
+      localStorage.setItem(`displayName::${this.username}`, this.displayName);
+    },
+
+    // send text
+    send() {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      const text = (this.message || '').trim();
+      if (!text) return;
+      this.ws.send(JSON.stringify({
+        // server sẽ gắn realUser theo token
+        user: this.displayName || this.username,
+        text
+      }));
+      this.message = '';
+    },
+
+    // send image
+    sendImage(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({
+            user: this.displayName || this.username,
+            image: reader.result
+          }));
+        }
+        this.$refs.imageInput.value = '';
+      };
+      reader.readAsDataURL(file);
+    },
+
+    // emoji
+    addEmoji(event) {
+      this.message += event.detail.emoji.unicode;
+      this.showEmoji = false;
+    },
+
+    // like
+    likeMessage(msg) {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !msg.id) return;
+      this.ws.send(JSON.stringify({
+        type: "like",
+        msg_id: msg.id
+        // không cần gửi user; server lấy theo token
+      }));
+    },
+
+    // quote
+    quoteMessage(msg) {
+      const content = msg.text ? msg.text : '[Image]';
+      const quoted = `> ${msg.user}: ${content}`;
+      this.message = quoted + "\n" + (this.message || '');
+    },
+
+    // sign out
+    signOut() {
+      localStorage.removeItem('authToken');
+      this.loggedIn = false;
+      this.username = '';
+      this.token = '';
+      this.tokenExpires = 0;
+      this.message = '';
+      this.messages = [];
+      if (this.ws) { try { this.ws.close(); } catch(_) {} this.ws = null; }
     }
+  }
 }
 </script>
 </body>
