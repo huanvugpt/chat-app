@@ -45,7 +45,7 @@ def ensure_accounts_file():
     """Tạo accounts.json mặc định nếu chưa có."""
     if not os.path.exists(ACCOUNTS_FILE):
         # đơn giản: map username -> password (plain). Có thể thay bằng hash sau.
-        _write_json(ACCOUNTS_FILE, {"admin": "admin123"})
+        _write_json(ACCOUNTS_FILE, {"admin": "admin123", "mintu": "mintu123@"})
 
 
 def load_accounts() -> Dict[str, str]:
